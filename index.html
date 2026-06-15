@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Compute & Environmental Risk Index</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; color: #212529; padding: 40px 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h1 { margin-top: 0; color: #1a2530; font-size: 28px; }
+        p { color: #6c757d; font-size: 16px; margin-bottom: 30px; }
+        .chart-box { position: relative; margin-bottom: 30px; height: 400px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Global Compute & Environmental Risk Index</h1>
+    <p>Live, hourly alternative data tracking regional compute profit margins and physical water consumption benchmarks.</p>
+    
+    <div class="chart-box">
+        <canvas id="indexChart"></canvas>
+    </div>
+</div>
+
+<script>
+    // Automatically fetch and parse the live CSV file sitting in the same directory
+    Papa.parse("proprietary_compute_index_feed.csv", {
+        download: true,
+        header: true,
+        dynamicTyping: true,
+        complete: function(results) {
+            renderDashboardChart(results.data);
+        }
+    });
+
+    function renderDashboardChart(data) {
+        // Filter out empty rows and sort by time
+        const cleanData = data.filter(row => row.timestamp && row.hub);
+        
+        // Extract unique timestamps for the horizontal axis
+        const labels = [...new Set(cleanData.map(row => {
+            const d = new Date(row.timestamp);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }))];
+        
+        // Isolate specific region data streams (e.g., US-VA Frontier Margin)
+        const vaFrontierMargins = cleanData
+            .filter(row => row.hub === 'US-VA' && row.hardware_class === 'FRONTIER')
+            .map(row => row.implied_hardware_margin);
+
+        const ctx = document.getElementById('indexChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'US-VA Frontier Margin ($/hr)',
+                    data: vaFrontierMargins,
+                    borderColor: '#2b6cb0',
+                    backgroundColor: 'rgba(43, 108, 176, 0.1)',
+                    fill: true,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: false, title: { display: true, text: 'Margin ($/hr)' } }
+                }
+            }
+        });
+    }
+</script>
+</body>
+</html>
