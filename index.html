@@ -171,26 +171,46 @@
         const hardwareSelect = document.getElementById('hardware-select');
         const selectedHardware = hardwareSelect.value;
 
-        // 2. Extract a unique timeline (X-axis labels)
-        const labels = [...new Set(globalData.map(row => {
-            const d = new Date(row.timestamp);
-            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        }))];
+        // 2. Build a rolling 24-hour timeline based on the newest data point
+        const latestRecordTime = Math.max(...globalData.map(r => new Date(r.timestamp).getTime()));
+        const endHour = new Date(latestRecordTime || new Date());
+        endHour.setMinutes(0, 0, 0); // Snap down to the top of the hour
 
-        // 3. Find all the unique regions (Hubs) in the dataset
+        const labels = [];      // For the visual X-axis (e.g., "03:00 PM")
+        const labelKeys = [];   // For matching records (e.g., "6/15/2026 03:00 PM")
+
+        for (let i = 23; i >= 0; i--) {
+            const d = new Date(endHour.getTime() - (i * 60 * 60 * 1000));
+            labels.push(d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+            labelKeys.push(d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+        }
+
+        // 3. Pre-group all data points into hourly buckets
+        const hourlyData = {};
+        globalData.forEach(row => {
+            const d = new Date(row.timestamp);
+            d.setMinutes(0, 0, 0); // Group anything in this hour down to the 00 minute mark
+            const key = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            if (!hourlyData[key]) hourlyData[key] = [];
+            hourlyData[key].push(row);
+        });
+
+        // 4. Find all the unique regions (Hubs) in the dataset
         const hubs = [...new Set(globalData.map(row => row.hub))];
         const colors = ['#2b6cb0', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#319795', '#dd6b20'];
 
-        // 4. Create a separate chart line for each geographic hub based on selected filters
+        // 5. Create a separate chart line for each geographic hub based on selected filters
         const datasets = hubs.map((hub, index) => {
-            const hubData = labels.map(label => {
-                const record = globalData.find(row => {
-                    const rowLabel = new Date(row.timestamp).toLocaleDateString() + ' ' + new Date(row.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    
-                    // Match Timestamp, Hub, AND the selected Hardware Class
-                    return rowLabel === label && row.hub === hub && row.hardware_class === selectedHardware;
-                });
-                return record ? record[selectedMetricKey] : null;
+            const hubData = labelKeys.map(key => {
+                // Find all records that fall into this specific hour for this hub & hardware
+                const recordsInHour = (hourlyData[key] || []).filter(row => row.hub === hub && row.hardware_class === selectedHardware);
+                
+                if (recordsInHour.length === 0) return null; // Let the line bridge over empty hours
+                
+                // Average the data points if there were multiple scans within the same hour
+                const sum = recordsInHour.reduce((acc, row) => acc + (row[selectedMetricKey] || 0), 0);
+                return sum / recordsInHour.length;
             });
 
             return {
@@ -204,7 +224,7 @@
             };
         });
 
-        // 5. Draw the chart
+        // 6. Draw the chart
         const ctx = document.getElementById('indexChart').getContext('2d');
         
         if (myChart) {
@@ -214,7 +234,7 @@
         myChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
+                labels: labels, // Show the 24 clean hourly markings
                 datasets: datasets
             },
             options: {
