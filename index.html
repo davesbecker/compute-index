@@ -4,19 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Compute & Environmental Risk Index</title>
+    <!-- Load Charting and CSV Parsing Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; color: #212529; padding: 40px 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; color: #212529; padding: 40px 20px; margin: 0; }
+        
+        /* Dashboard Styling */
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         h1 { margin-top: 0; color: #1a2530; font-size: 28px; }
         p { color: #6c757d; font-size: 16px; margin-bottom: 30px; }
         .chart-box { position: relative; margin-bottom: 30px; height: 400px; }
+
+        /* Login Screen Styling */
+        #login-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #f8f9fa; display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+        }
+        .login-box {
+            background: white; padding: 40px; border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%;
+        }
+        .login-box h2 { margin-top: 0; color: #1a2530; margin-bottom: 20px; }
+        .login-box input {
+            width: 80%; padding: 10px; margin-bottom: 20px;
+            border: 1px solid #ccc; border-radius: 4px; font-size: 16px;
+        }
+        .login-box button {
+            background: #2b6cb0; color: white; border: none; padding: 10px 20px;
+            font-size: 16px; border-radius: 4px; cursor: pointer; transition: background 0.3s;
+        }
+        .login-box button:hover { background: #2c5282; }
+        #error-msg { color: #e53e3e; margin-top: 15px; display: none; font-size: 14px; }
+        
+        /* Hide dashboard initially */
+        #dashboard-content { display: none; }
     </style>
 </head>
 <body>
 
-<div class="container">
+<!-- THE LOGIN SCREEN -->
+<div id="login-screen">
+    <div class="login-box">
+        <h2>Index Access</h2>
+        <p style="margin-bottom:20px; font-size: 14px;">Please enter the password to view the dashboard.</p>
+        <input type="password" id="password-input" placeholder="Enter password" onkeypress="handleKeyPress(event)">
+        <br>
+        <button onclick="checkPassword()">Unlock Dashboard</button>
+        <div id="error-msg">Incorrect password. Please try again.</div>
+    </div>
+</div>
+
+<!-- THE DASHBOARD (Hidden until unlocked) -->
+<div id="dashboard-content" class="container">
     <h1>Global Compute & Environmental Risk Index</h1>
     <p>Live, hourly alternative data tracking regional compute profit margins and physical water consumption benchmarks.</p>
     
@@ -26,15 +67,44 @@
 </div>
 
 <script>
-    // Automatically fetch and parse the live CSV file sitting in the same directory
-    Papa.parse("proprietary_compute_index_feed.csv", {
-        download: true,
-        header: true,
-        dynamicTyping: true,
-        complete: function(results) {
-            renderDashboardChart(results.data);
+    // --- LOGIN LOGIC ---
+    // Change "quant" to whatever password you want to use
+    const SECRET_PASSWORD = "quant";
+
+    function checkPassword() {
+        const userInput = document.getElementById('password-input').value;
+        if (userInput === SECRET_PASSWORD) {
+            // Hide login screen and show dashboard
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('dashboard-content').style.display = 'block';
+            
+            // Now that we are logged in, load the data!
+            loadDashboardData();
+        } else {
+            // Show error message
+            document.getElementById('error-msg').style.display = 'block';
+            document.getElementById('password-input').value = ''; // clear the box
         }
-    });
+    }
+
+    // Allow user to hit "Enter" on their keyboard to submit the password
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            checkPassword();
+        }
+    }
+
+    // --- DATA & CHART LOGIC (Only runs after login) ---
+    function loadDashboardData() {
+        Papa.parse("proprietary_compute_index_feed.csv", {
+            download: true,
+            header: true,
+            dynamicTyping: true,
+            complete: function(results) {
+                renderDashboardChart(results.data);
+            }
+        });
+    }
 
     function renderDashboardChart(data) {
         // Filter out empty rows and sort by time
