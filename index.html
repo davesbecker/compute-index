@@ -13,8 +13,21 @@
         /* Dashboard Styling */
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         h1 { margin-top: 0; color: #1a2530; font-size: 28px; }
-        p { color: #6c757d; font-size: 16px; margin-bottom: 30px; }
-        .chart-box { position: relative; margin-bottom: 30px; height: 400px; }
+        p.subtitle { color: #6c757d; font-size: 16px; margin-bottom: 20px; }
+        
+        /* Interactive Controls */
+        .controls { background: #edf2f7; padding: 15px; border-radius: 6px; margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 15px; }
+        .control-group { display: flex; align-items: center; gap: 8px; }
+        .controls select { padding: 8px 12px; font-size: 14px; border: 1px solid #cbd5e0; border-radius: 4px; background: white; }
+        
+        .chart-box { position: relative; margin-bottom: 30px; height: 450px; }
+
+        /* Definitions Section */
+        .definitions-box { background: #fffaf0; border-left: 4px solid #dd6b20; padding: 20px; border-radius: 4px; margin-top: 30px; }
+        .definitions-box h3 { margin-top: 0; color: #9c4221; font-size: 18px; margin-bottom: 15px; }
+        .definitions-box ul { margin: 0; padding-left: 20px; color: #4a5568; line-height: 1.6; }
+        .definitions-box li { margin-bottom: 10px; }
+        .definitions-box strong { color: #2d3748; }
 
         /* Login Screen Styling */
         #login-screen {
@@ -59,87 +72,150 @@
 <!-- THE DASHBOARD (Hidden until unlocked) -->
 <div id="dashboard-content" class="container">
     <h1>Global Compute & Environmental Risk Index</h1>
-    <p>Live, hourly alternative data tracking regional compute profit margins and physical water consumption benchmarks.</p>
+    <p class="subtitle">Live, hourly alternative data tracking regional compute profit margins and physical water consumption benchmarks.</p>
     
+    <!-- INTERACTIVE CONTROLS -->
+    <div class="controls">
+        <div class="control-group">
+            <label for="metric-select"><strong>Metric:</strong></label>
+            <select id="metric-select" onchange="renderDashboardChart()">
+                <option value="implied_hardware_margin">Hardware Margin ($/hr)</option>
+                <option value="hourly_water_consumption_liters">Water Footprint (Liters/hr)</option>
+                <option value="cost_per_million_tokens">Cost per Million Tokens ($)</option>
+                <option value="raw_gpu_hourly_rate">Raw Hardware Rental Rate ($/hr)</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="hardware-select"><strong>Hardware Tier:</strong></label>
+            <select id="hardware-select" onchange="renderDashboardChart()">
+                <option value="FRONTIER">Frontier (B200, H200)</option>
+                <option value="STANDARD">Standard (H100, A100, etc.)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- THE CHART -->
     <div class="chart-box">
         <canvas id="indexChart"></canvas>
+    </div>
+
+    <!-- DEFINITIONS SECTION -->
+    <div class="definitions-box">
+        <h3>Metric Definitions</h3>
+        <ul>
+            <li><strong>Hardware Margin ($/hr):</strong> The estimated net profit per hour for operating a node. This subtracts the regional cost of commercial electricity and the municipal cost of water cooling from the raw rental revenue.</li>
+            <li><strong>Water Footprint (Liters/hr):</strong> The physical environmental risk metric. This calculates how many liters of municipal water evaporate per hour to cool the server, based on local datacenter infrastructure efficiency (WUE).</li>
+            <li><strong>Cost per Million Tokens ($):</strong> The true "cost of intelligence." It normalizes hardware prices by taking the hourly rental rate and dividing it by the chip's processing speed to show the actual cost of doing AI work.</li>
+            <li><strong>Raw Hardware Rental Rate ($/hr):</strong> The base, gross market price to rent the physical computer chip for 60 minutes on the open marketplace, before any utility expenses are factored in.</li>
+        </ul>
     </div>
 </div>
 
 <script>
     // --- LOGIN LOGIC ---
-    // Change "quant" to whatever password you want to use
     const SECRET_PASSWORD = "quant";
+    let globalData = []; 
+    let myChart = null;  
 
     function checkPassword() {
         const userInput = document.getElementById('password-input').value;
         if (userInput === SECRET_PASSWORD) {
-            // Hide login screen and show dashboard
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('dashboard-content').style.display = 'block';
-            
-            // Now that we are logged in, load the data!
             loadDashboardData();
         } else {
-            // Show error message
             document.getElementById('error-msg').style.display = 'block';
-            document.getElementById('password-input').value = ''; // clear the box
+            document.getElementById('password-input').value = '';
         }
     }
 
-    // Allow user to hit "Enter" on their keyboard to submit the password
     function handleKeyPress(event) {
-        if (event.key === 'Enter') {
-            checkPassword();
-        }
+        if (event.key === 'Enter') checkPassword();
     }
 
-    // --- DATA & CHART LOGIC (Only runs after login) ---
+    // --- DATA & CHART LOGIC ---
     function loadDashboardData() {
         Papa.parse("proprietary_compute_index_feed.csv", {
             download: true,
             header: true,
             dynamicTyping: true,
             complete: function(results) {
-                renderDashboardChart(results.data);
+                // Save valid rows globally
+                globalData = results.data.filter(row => row.timestamp && row.hub);
+                renderDashboardChart();
             }
         });
     }
 
-    function renderDashboardChart(data) {
-        // Filter out empty rows and sort by time
-        const cleanData = data.filter(row => row.timestamp && row.hub);
-        
-        // Extract unique timestamps for the horizontal axis
-        const labels = [...new Set(cleanData.map(row => {
+    function renderDashboardChart() {
+        if (globalData.length === 0) return;
+
+        // 1. Get the currently selected Metric and Hardware Tier
+        const metricSelect = document.getElementById('metric-select');
+        const selectedMetricKey = metricSelect.value;
+        const selectedMetricLabel = metricSelect.options[metricSelect.selectedIndex].text;
+
+        const hardwareSelect = document.getElementById('hardware-select');
+        const selectedHardware = hardwareSelect.value;
+
+        // 2. Extract a unique timeline (X-axis labels)
+        const labels = [...new Set(globalData.map(row => {
             const d = new Date(row.timestamp);
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         }))];
-        
-        // Isolate specific region data streams (e.g., US-VA Frontier Margin)
-        const vaFrontierMargins = cleanData
-            .filter(row => row.hub === 'US-VA' && row.hardware_class === 'FRONTIER')
-            .map(row => row.implied_hardware_margin);
 
+        // 3. Find all the unique regions (Hubs) in the dataset
+        const hubs = [...new Set(globalData.map(row => row.hub))];
+        const colors = ['#2b6cb0', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#319795', '#dd6b20'];
+
+        // 4. Create a separate chart line for each geographic hub based on selected filters
+        const datasets = hubs.map((hub, index) => {
+            const hubData = labels.map(label => {
+                const record = globalData.find(row => {
+                    const rowLabel = new Date(row.timestamp).toLocaleDateString() + ' ' + new Date(row.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    
+                    // Match Timestamp, Hub, AND the selected Hardware Class
+                    return rowLabel === label && row.hub === hub && row.hardware_class === selectedHardware;
+                });
+                return record ? record[selectedMetricKey] : null;
+            });
+
+            return {
+                label: `${hub} (${selectedHardware})`,
+                data: hubData,
+                borderColor: colors[index % colors.length],
+                backgroundColor: colors[index % colors.length],
+                tension: 0.2,
+                fill: false,
+                spanGaps: true 
+            };
+        });
+
+        // 5. Draw the chart
         const ctx = document.getElementById('indexChart').getContext('2d');
-        new Chart(ctx, {
+        
+        if (myChart) {
+            myChart.destroy();
+        }
+
+        myChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: 'US-VA Frontier Margin ($/hr)',
-                    data: vaFrontierMargins,
-                    borderColor: '#2b6cb0',
-                    backgroundColor: 'rgba(43, 108, 176, 0.1)',
-                    fill: true,
-                    tension: 0.2
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: false, title: { display: true, text: 'Margin ($/hr)' } }
+                    y: { 
+                        beginAtZero: false, 
+                        title: { display: true, text: selectedMetricLabel } 
+                    }
+                },
+                plugins: {
+                    tooltip: { mode: 'index', intersect: false }
                 }
             }
         });
