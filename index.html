@@ -4,254 +4,315 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Compute & Environmental Risk Index</title>
-    <!-- Load Charting and CSV Parsing Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FIX 1: The correct UMD build of Chart.js that will not crash -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; color: #212529; padding: 40px 20px; margin: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f8f9fa; color: #333; }
+        .dashboard { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 1000px; margin: 0 auto; }
+        .header { border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        .header h1 { margin: 0 0 10px 0; font-size: 24px; color: #1a365d; }
+        .header p { margin: 0; color: #666; font-size: 14px; }
         
-        /* Dashboard Styling */
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        h1 { margin-top: 0; color: #1a2530; font-size: 28px; }
-        p.subtitle { color: #6c757d; font-size: 16px; margin-bottom: 20px; }
+        .controls { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .filters { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .filter-group label { font-weight: bold; margin-right: 8px; font-size: 14px; }
+        select { padding: 6px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
         
-        /* Interactive Controls */
-        .controls { background: #edf2f7; padding: 15px; border-radius: 6px; margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 15px; }
-        .control-group { display: flex; align-items: center; gap: 8px; }
-        .controls select { padding: 8px 12px; font-size: 14px; border: 1px solid #cbd5e0; border-radius: 4px; background: white; }
-        
-        /* Download Button */
-        .download-btn {
-            background-color: #38a169; color: white; padding: 8px 15px; text-decoration: none;
-            border-radius: 4px; font-size: 14px; font-weight: bold; margin-left: auto; transition: background 0.3s;
-        }
-        .download-btn:hover { background-color: #2f855a; }
+        .btn-download { background-color: #2b8a3e; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+        .btn-download:hover { background-color: #237032; }
 
-        .chart-box { position: relative; margin-bottom: 30px; height: 450px; }
-
-        /* Definitions Section */
-        .definitions-box { background: #fffaf0; border-left: 4px solid #dd6b20; padding: 20px; border-radius: 4px; margin-top: 30px; }
-        .definitions-box h3 { margin-top: 0; color: #9c4221; font-size: 18px; margin-bottom: 15px; }
-        .definitions-box ul { margin: 0; padding-left: 20px; color: #4a5568; line-height: 1.6; }
-        .definitions-box li { margin-bottom: 10px; }
-        .definitions-box strong { color: #2d3748; }
-
-        /* Login Screen Styling */
-        #login-screen {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #f8f9fa; display: flex; justify-content: center; align-items: center;
-            z-index: 1000;
-        }
-        .login-box {
-            background: white; padding: 40px; border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%;
-        }
-        .login-box h2 { margin-top: 0; color: #1a2530; margin-bottom: 20px; }
-        .login-box input {
-            width: 80%; padding: 10px; margin-bottom: 20px;
-            border: 1px solid #ccc; border-radius: 4px; font-size: 16px;
-        }
-        .login-box button {
-            background: #2b6cb0; color: white; border: none; padding: 10px 20px;
-            font-size: 16px; border-radius: 4px; cursor: pointer; transition: background 0.3s;
-        }
-        .login-box button:hover { background: #2c5282; }
-        #error-msg { color: #e53e3e; margin-top: 15px; display: none; font-size: 14px; }
+        .chart-container { position: relative; height: 400px; width: 100%; margin-bottom: 30px; }
         
-        /* Hide dashboard initially */
-        #dashboard-content { display: none; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e9ecef; }
+        th { background-color: #f8f9fa; color: #495057; font-weight: 600; }
+        
+        /* Debugger Box */
+        #errorBox { display: none; background: #fee2e2; border: 1px solid #ef4444; color: #b91c1c; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-family: monospace; }
     </style>
 </head>
 <body>
 
-<!-- THE LOGIN SCREEN -->
-<div id="login-screen">
-    <div class="login-box">
-        <h2>Index Access</h2>
-        <p style="margin-bottom:20px; font-size: 14px;">Please enter the password to view the dashboard.</p>
-        <input type="password" id="password-input" placeholder="Enter password" onkeypress="handleKeyPress(event)">
-        <br>
-        <button onclick="checkPassword()">Unlock Dashboard</button>
-        <div id="error-msg">Incorrect password. Please try again.</div>
-    </div>
-</div>
+<div class="dashboard">
+    <!-- On-Screen Debugger (Normally hidden) -->
+    <div id="errorBox"></div>
 
-<!-- THE DASHBOARD (Hidden until unlocked) -->
-<div id="dashboard-content" class="container">
-    <h1>Global Compute & Environmental Risk Index</h1>
-    <p class="subtitle">Live, hourly alternative data tracking regional compute profit margins and physical water consumption benchmarks.</p>
+    <div class="header">
+        <h1>Global Compute & Environmental Risk Index</h1>
+        <p>Live, hourly alternative data tracking regional compute profit margins and physical water consumption benchmarks.</p>
+    </div>
     
-    <!-- INTERACTIVE CONTROLS -->
     <div class="controls">
-        <div class="control-group">
-            <label for="metric-select"><strong>Metric:</strong></label>
-            <select id="metric-select" onchange="renderDashboardChart()">
-                <option value="implied_hardware_margin">Hardware Margin ($/hr)</option>
-                <option value="hourly_water_consumption_liters">Water Footprint (Liters/hr)</option>
-                <option value="cost_per_million_tokens">Cost per Million Tokens ($)</option>
-                <option value="raw_gpu_hourly_rate">Raw Hardware Rental Rate ($/hr)</option>
-            </select>
+        <div class="filters">
+            <div class="filter-group">
+                <label for="metricSelect">Metric:</label>
+                <select id="metricSelect" onchange="updateDashboard()">
+                    <option value="cost_per_r">Cost per Million Tokens ($)</option>
+                    <option value="hardware_margin">Hardware Margin ($/hr)</option>
+                    <option value="hourly_ele">Hourly Electricity ($)</option>
+                    <option value="water_footprint">Water Footprint (Liters/hr)</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="tierSelect">Hardware Tier:</label>
+                <select id="tierSelect" onchange="updateDashboard()">
+                    <option value="FRONTIER">Frontier (B200, H200)</option>
+                    <option value="ALL">All Hardware (Includes B300 Leak)</option>
+                </select>
+            </div>
         </div>
-        
-        <div class="control-group">
-            <label for="hardware-select"><strong>Hardware Tier:</strong></label>
-            <select id="hardware-select" onchange="renderDashboardChart()">
-                <option value="FRONTIER">Frontier (B200, H200)</option>
-                <option value="STANDARD">Standard (H100, A100, etc.)</option>
-            </select>
-        </div>
-
-        <!-- NEW DOWNLOAD BUTTON -->
-        <a href="proprietary_compute_index_feed.csv" download="Compute_Index_History.csv" class="download-btn">
-            📥 Download Raw CSV
-        </a>
+        <button class="btn-download" onclick="downloadCSV()">⬇ Download Raw CSV</button>
     </div>
 
-    <!-- THE CHART -->
-    <div class="chart-box">
-        <canvas id="indexChart"></canvas>
+    <div class="chart-container">
+        <canvas id="computeChart"></canvas>
     </div>
 
-    <!-- DEFINITIONS SECTION -->
-    <div class="definitions-box">
-        <h3>Metric Definitions</h3>
-        <ul>
-            <li><strong>Hardware Margin ($/hr):</strong> The estimated net profit per hour for operating a node. This subtracts the regional cost of commercial electricity and the municipal cost of water cooling from the raw rental revenue.</li>
-            <li><strong>Water Footprint (Liters/hr):</strong> The physical environmental risk metric. This calculates how many liters of municipal water evaporate per hour to cool the server, based on local datacenter infrastructure efficiency (WUE).</li>
-            <li><strong>Cost per Million Tokens ($):</strong> The true "cost of intelligence." It normalizes hardware prices by taking the hourly rental rate and dividing it by the chip's processing speed to show the actual cost of doing AI work.</li>
-            <li><strong>Raw Hardware Rental Rate ($/hr):</strong> The base, gross market price to rent the physical computer chip for 60 minutes on the open marketplace, before any utility expenses are factored in.</li>
-        </ul>
-    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Hardware Hub</th>
+                <th>12-Hour Overall Average</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody">
+            <!-- Results will be injected here -->
+        </tbody>
+    </table>
 </div>
 
 <script>
-    // --- LOGIN LOGIC ---
-    const SECRET_PASSWORD = "quant";
-    let globalData = []; 
-    let myChart = null;  
+    // ---------------------------------------------------------
+    // 0. ON-SCREEN ERROR LOGGER (Catches silent crashes)
+    // ---------------------------------------------------------
+    window.onerror = function(message, source, lineno, colno, error) {
+        const box = document.getElementById("errorBox");
+        box.style.display = "block";
+        box.innerHTML += `<strong>System Error:</strong> ${message} <br><strong>Line:</strong> ${lineno}<br><br>`;
+    };
 
-    function checkPassword() {
-        const userInput = document.getElementById('password-input').value;
-        if (userInput === SECRET_PASSWORD) {
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('dashboard-content').style.display = 'block';
-            loadDashboardData();
-        } else {
-            document.getElementById('error-msg').style.display = 'block';
-            document.getElementById('password-input').value = '';
-        }
-    }
+    let currentChart = null; 
+    let currentFilteredData = []; 
 
-    function handleKeyPress(event) {
-        if (event.key === 'Enter') checkPassword();
-    }
+    // ---------------------------------------------------------
+    // 1. DATA INGESTION (Fetching live CSV)
+    // ---------------------------------------------------------
+    let rawData = [];
 
-    // --- DATA & CHART LOGIC ---
-    function loadDashboardData() {
-        Papa.parse("proprietary_compute_index_feed.csv", {
-            download: true,
-            header: true,
-            dynamicTyping: true,
-            complete: function(results) {
-                // Save valid rows globally
-                globalData = results.data.filter(row => row.timestamp && row.hub);
-                renderDashboardChart();
-            }
-        });
-    }
-
-    function renderDashboardChart() {
-        if (globalData.length === 0) return;
-
-        // 1. Get the currently selected Metric and Hardware Tier
-        const metricSelect = document.getElementById('metric-select');
-        const selectedMetricKey = metricSelect.value;
-        const selectedMetricLabel = metricSelect.options[metricSelect.selectedIndex].text;
-
-        const hardwareSelect = document.getElementById('hardware-select');
-        const selectedHardware = hardwareSelect.value;
-
-        // 2. Build a rolling 24-hour timeline based on the newest data point
-        const latestRecordTime = Math.max(...globalData.map(r => new Date(r.timestamp).getTime()));
-        const endHour = new Date(latestRecordTime || new Date());
-        endHour.setMinutes(0, 0, 0); // Snap down to the top of the hour
-
-        const labels = [];      // For the visual X-axis (e.g., "03:00 PM")
-        const labelKeys = [];   // For matching records (e.g., "6/15/2026 03:00 PM")
-
-        for (let i = 23; i >= 0; i--) {
-            const d = new Date(endHour.getTime() - (i * 60 * 60 * 1000));
-            labels.push(d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
-            labelKeys.push(d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
-        }
-
-        // 3. Pre-group all data points into hourly buckets
-        const hourlyData = {};
-        globalData.forEach(row => {
-            const d = new Date(row.timestamp);
-            d.setMinutes(0, 0, 0); // Group anything in this hour down to the 00 minute mark
-            const key = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    async function fetchRealData() {
+        try {
+            // Fetch the live CSV file from the connected repository
+            const response = await fetch('proprietary_compute_index_feed.csv');
+            if (!response.ok) throw new Error("Failed to find proprietary_compute_index_feed.csv");
             
-            if (!hourlyData[key]) hourlyData[key] = [];
-            hourlyData[key].push(row);
+            const csvText = await response.text();
+            const lines = csvText.split('\n');
+            const data = [];
+            
+            // Loop through CSV rows (skipping the header row)
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue; // Skip empty rows
+                
+                const values = lines[i].split(',');
+                
+                // Map the CSV columns to the dashboard's internal variables
+                data.push({
+                    machine_id: values[0],
+                    gpu_mode: values[1],
+                    hardware_hub: values[3],
+                    cost_per_r: parseFloat(values[8]),
+                    hourly_ele: parseFloat(values[6]),
+                    hardware_margin: parseFloat(values[7]),
+                    water_footprint: 0, // Placeholder until water metrics are added
+                    timestamp: values[9] ? values[9].trim() : ''
+                });
+            }
+            
+            rawData = data;
+            updateDashboard(); // Trigger the chart render once data is loaded
+            
+        } catch (error) {
+            const box = document.getElementById("errorBox");
+            box.style.display = "block";
+            box.innerHTML += `<strong>Data Ingestion Error:</strong> ${error.message} <br>`;
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 2. CORE LOGIC (Bulletproof Epoch Bucketing)
+    // ---------------------------------------------------------
+    function processData() {
+        const selectedTier = document.getElementById("tierSelect").value;
+        const selectedMetric = document.getElementById("metricSelect").value;
+
+        const now = new Date();
+        const currentHourDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+        
+        const hourBuckets = []; 
+        const labels = [];      
+        
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(currentHourDate.getTime() - (i * 60 * 60 * 1000));
+            hourBuckets.push(d.getTime());
+            
+            let h = d.getHours();
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12;
+            h = h ? h : 12; 
+            const hStr = h < 10 ? '0' + h : h;
+            labels.push(`${hStr}:00 ${ampm}`);
+        }
+
+        // FILTER STEP
+        currentFilteredData = rawData.filter(row => {
+            const rowDate = new Date(row.timestamp);
+            if (isNaN(rowDate)) return false; // Skips rows with broken timestamps
+
+            const rowEpoch = rowDate.getTime();
+            const oldestAllowed = hourBuckets[0]; 
+            
+            if (rowEpoch < oldestAllowed) return false;
+            
+            if (selectedTier === "FRONTIER") {
+                return ["B200", "H200", "H200 NVL"].includes(row.gpu_mode);
+            }
+            return true;
         });
 
-        // 4. Find all the unique regions (Hubs) in the dataset
-        const hubs = [...new Set(globalData.map(row => row.hub))];
-        const colors = ['#2b6cb0', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#319795', '#dd6b20'];
+        // BUCKET STEP
+        const hourlyGrouped = {};
+        const overallGrouped = {}; 
+        
+        currentFilteredData.forEach(row => {
+            const d = new Date(row.timestamp);
+            const rowHourDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), 0, 0, 0);
+            const epoch = rowHourDate.getTime();
+            
+            if (!hourBuckets.includes(epoch)) return; 
+            
+            const hub = row.hardware_hub;
+            
+            // Strict parsing to prevent CSV strings from crashing the math
+            const val = parseFloat(row[selectedMetric]);
+            if (isNaN(val)) return; 
 
-        // 5. Create a separate chart line for each geographic hub based on selected filters
-        const datasets = hubs.map((hub, index) => {
-            const hubData = labelKeys.map(key => {
-                // Find all records that fall into this specific hour for this hub & hardware
-                const recordsInHour = (hourlyData[key] || []).filter(row => row.hub === hub && row.hardware_class === selectedHardware);
+            if (!hourlyGrouped[hub]) hourlyGrouped[hub] = {};
+            if (!hourlyGrouped[hub][epoch]) hourlyGrouped[hub][epoch] = [];
+            hourlyGrouped[hub][epoch].push(val);
+
+            if (!overallGrouped[hub]) overallGrouped[hub] = { total: 0, count: 0 };
+            overallGrouped[hub].total += val;
+            overallGrouped[hub].count += 1;
+        });
+
+        const datasets = [];
+        const colors = { "US-OTHER": "#3b82f6", "US-VA": "#ef4444", "EU": "#10b981" };
+
+        for (const hub in hourlyGrouped) {
+            const dataPoints = hourBuckets.map(epoch => {
+                const values = hourlyGrouped[hub][epoch];
+                if (!values || values.length === 0) return null; 
                 
-                if (recordsInHour.length === 0) return null; // Let the line bridge over empty hours
-                
-                // Average the data points if there were multiple scans within the same hour
-                const sum = recordsInHour.reduce((acc, row) => acc + (row[selectedMetricKey] || 0), 0);
-                return sum / recordsInHour.length;
+                const sum = values.reduce((a, b) => a + b, 0);
+                const avg = sum / values.length;
+                return parseFloat(avg.toFixed(4)); 
             });
 
-            return {
-                label: `${hub} (${selectedHardware})`,
-                data: hubData,
-                borderColor: colors[index % colors.length],
-                backgroundColor: colors[index % colors.length],
-                tension: 0.2,
+            datasets.push({
+                label: hub,
+                data: dataPoints,
+                borderColor: colors[hub] || "#666",
+                backgroundColor: colors[hub] || "#666",
                 fill: false,
-                spanGaps: true 
-            };
-        });
-
-        // 6. Draw the chart
-        const ctx = document.getElementById('indexChart').getContext('2d');
-        
-        if (myChart) {
-            myChart.destroy();
+                tension: 0.1,
+                spanGaps: true
+            });
         }
 
-        myChart = new Chart(ctx, {
+        const tableAverages = [];
+        for (const hub in overallGrouped) {
+            tableAverages.push({
+                hub: hub,
+                averageValue: (overallGrouped[hub].total / overallGrouped[hub].count).toFixed(4)
+            });
+        }
+
+        return { labels, datasets, tableAverages };
+    }
+
+    // ---------------------------------------------------------
+    // 3. UI AND RENDERING
+    // ---------------------------------------------------------
+    function updateDashboard() {
+        const processed = processData();
+        
+        const tbody = document.getElementById("resultsBody");
+        tbody.innerHTML = ""; 
+        processed.tableAverages.forEach(result => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td><strong>${result.hub}</strong></td><td>${result.averageValue}</td>`;
+            tbody.appendChild(tr);
+        });
+
+        renderChart(processed.labels, processed.datasets);
+    }
+
+    function renderChart(labels, datasets) {
+        if (typeof Chart === 'undefined') {
+            throw new Error("Chart.js library failed to load from the CDN.");
+        }
+
+        const ctx = document.getElementById('computeChart').getContext('2d');
+        const metricName = document.getElementById("metricSelect").options[document.getElementById("metricSelect").selectedIndex].text;
+
+        if (currentChart) { currentChart.destroy(); }
+
+        currentChart = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels: labels, // Show the 24 clean hourly markings
-                datasets: datasets
-            },
+            data: { labels: labels, datasets: datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
                 scales: {
-                    y: { 
-                        beginAtZero: false, 
-                        title: { display: true, text: selectedMetricLabel } 
-                    }
-                },
-                plugins: {
-                    tooltip: { mode: 'index', intersect: false }
+                    x: { title: { display: true, text: 'Time (Last 12 Hours)' } },
+                    y: { beginAtZero: false, title: { display: true, text: metricName } }
                 }
             }
         });
     }
+
+    // ---------------------------------------------------------
+    // 4. CSV DOWNLOADER
+    // ---------------------------------------------------------
+    function downloadCSV() {
+        if (currentFilteredData.length === 0) {
+            alert("No data available to download. Please check your data source.");
+            return;
+        }
+
+        const headers = ["timestamp", "machine_id", "gpu_mode", "hardware_hub", "cost_per_r", "hardware_margin", "hourly_ele", "water_footprint"];
+        let csvContent = headers.join(",") + "\n";
+        
+        currentFilteredData.forEach(row => {
+            const rowValues = headers.map(header => row[header]);
+            csvContent += rowValues.join(",") + "\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "compute_index_12hr_export.csv");
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    // Initialize the dashboard by calling the fetch function
+    fetchRealData();
+
 </script>
 </body>
 </html>
